@@ -1,0 +1,59 @@
+<?php
+
+/**
+ * implements hook_menu()
+ */
+function dossiersearch_menu() {
+  $items = array();
+
+  // Admin settings for dossiersearch
+  $items['admin/settings/Dossiersearch'] = array(
+    'title'           => 'Dossiersearch',
+    'description'     => t('Settings for Dossiersearch'),
+    'page callback'   => 'drupal_get_form',
+    'page arguments'  => array('dossiersearch_admin_settings'),
+    'access callback' => 'user_access',
+    'access arguments'=> array('administer site configuration'),
+    'type'            => MENU_NORMAL_ITEM,
+    'file'            => 'admin.inc',
+  );
+  // Hauptseite
+  $items['dossiersuche'] = array(
+    'title'           => 'Dossier Suche',
+    'description'     => 'Dossier suchen und filtern',
+    'page callback'   => '_dossiersearch_page',
+    'page arguments'  => array(1),
+    'access arguments'=> array('access content'),
+    'type'            => MENU_SUGGESTED_ITEM,
+    'file'            => 'page.main.inc',
+  );
+  // AJAX Abfrage für Suchresultate
+  $items['dossiersuche/results'] = array(
+    'page callback'   => '_dossiersearch_results_json',
+    'page arguments'  => array(2,3),
+    'access arguments'=> array('access content'),
+    'type'            => MENU_CALLBACK,
+    'file'            => 'page.results.inc',
+  );
+  // XLS-Export Download Link
+  $items['dossiersuche/export'] = array(
+    'page callback'   => '_dossiersearch_export_csv',
+    'page arguments'  => array(2),
+    'access arguments'=> array('access content'),
+    'type'            => MENU_CALLBACK,
+    'file'            => 'export.csv.inc',
+  );
+  return $items;
+}
+
+
+/**
+ * Implementation of hook_form_alter()
+ */
+function dossiersearch_form_alter(&$form, &$form_state, $form_id) {
+  // Googlemaps ausblenden, wenn nicht benötigt wird
+  if ($form_id == 'dossier_node_form' && !variable_get('dossiersearch_filterlocation', false)) {
+      $form['locations']['#prefix'] = '<div style="display:none;">';
+      $form['locations']['#suffix'] = '</div>';
+  }
+}

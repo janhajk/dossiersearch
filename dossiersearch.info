@@ -1,0 +1,6 @@
+;$Id$
+name = Dossier Search
+description = Filterseite für Dossiers
+core = 6.x
+php = 5.2
+package = "Custom Modules"
