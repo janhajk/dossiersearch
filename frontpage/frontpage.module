@@ -1,0 +1,305 @@
+<?php
+
+/*
+ * implenentation of hook_menu()
+ */
+function frontpage_menu() {
+  $items = array();
+  $items['start'] = array(
+    'title'            => variable_get('frontpage_titel', 'Neustes'),
+    'page callback'    => 'frontpage_start',
+    'access callback'  => 'user_access',
+    'access arguments' => array('access content'),
+    'type'             => MENU_CALLBACK,
+  );
+  $items['start/more/%'] = array(
+    'title'            => 'more',
+    'page callback'    => 'frontpage_more',
+    'page arguments'   => array(2),
+    'access arguments' => array('access content'),
+    'type'             => MENU_CALLBACK,
+  );
+  $items['admin/settings/frontpage'] = array(
+    'title'            => 'frontpage',
+    'description'      => t('Settings for frontpage-module'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('frontpage_admin_settings'),
+    'access callback'  => 'user_access',
+    'access arguments' => array('administer site configuration'),
+    'type'             => MENU_NORMAL_ITEM,
+  );
+  $items['admin/settings/frontpage/clearcache'] = array(
+    'title'            => 'Clear frontpage-Cache',
+    'description'      => t('Clear/Reset frontpage Cache'),
+    'page callback'    => 'frontpage_clearCache',
+    'page arguments'   => array('frontpage_admin_settings'),
+    'access callback'  => 'user_access',
+    'access arguments' => array('administer site configuration'),
+    'type'             => MENU_NORMAL_ITEM,
+  );
+  return $items;
+}
+
+/**
+ * Declares administrative settings for the module.
+ */
+function frontpage_admin_settings() {
+  $form['frontpage_titel'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Titel der Startseite'),
+    '#default_value' => variable_get('frontpage_titel', 'Neustes'),
+    '#description'   => t('Wenn leer, dann wird kein Titel angezeigt'),
+  );
+  $form['frontpage_titel_hide'] = array(
+    '#type'          => 'checkbox',
+    '#title'         => t('Titel verbergen'),
+    '#default_value' => variable_get('frontpage_titel_hide', true),
+    '#description'   => t(''),
+  );
+  $form['frontpage_usecache'] = array(
+    '#type'          => 'checkbox',
+    '#title'         => t('Use DB-Cache'),
+    '#default_value' => variable_get('frontpage_usecache', true),
+    '#description'   => t('If checked, the frontpage is cached'),
+  );
+  $form['frontpage_showOgLogos'] = array(
+    '#type'          => 'checkbox',
+    '#title'         => t('Show Organic Groups Logos'),
+    '#default_value' => variable_get('frontpage_showOgLogos', true),
+    '#description'   => t('If checked, Logos of Organic Groups are Displayed. Else only Name in Textform is showed'),
+  );
+  $form['frontpage_searchpath'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Pfad für Suche'),
+    '#default_value' => variable_get('frontpage_searchpath', 'dossiersuche'),
+    '#description'   => t('Pfad auf den Suche weitergeleitet werden soll ohne vorangehende und abschliessendes "/"'),
+  );
+  $form['frontpage_sql'] = array(
+    '#type'          => 'textarea',
+    '#title'         => t('Abfrage der Daten SQL'),
+    '#default_value' => variable_get('frontpage_sql', ''),
+    '#description'   => t(''),
+  );
+  $form['frontpage_dossiertype'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Node Typ des Dossiers'),
+    '#default_value' => variable_get('frontpage_dossiertype', 'dossier'),
+    '#description'   => t(''),
+  );
+  return system_settings_form($form);
+}
+
+
+function frontpage_clearCache() {
+  db_query("DELETE FROM {cache} WHERE cid LIKE 'frontpage_%'");
+  drupal_set_message(t('Frontpage-Cache cleared!'));
+  drupal_goto('<front>');
+}
+
+function frontpage_more($start) {
+  $nodes  = frontpage_getData(30,$start);
+  $output = theme ('table', array(), $nodes);
+  $output = preg_match('|<tbody[^>]*?>(.*?)</tbody>|si',$output,$match);
+  print $match[1];
+}
+
+function frontpage_start() {
+  drupal_add_css(drupal_get_path('module','frontpage').'/frontpage.css');
+  drupal_add_js (drupal_get_path('module','frontpage').'/frontpage.js' );
+  drupal_add_js (array('frontpage'=>array('searchpath' => variable_get('frontpage_searchpath','dossiersuche'))), 'setting');
+  $frontpage = variable_get('frontpage_table','');
+  if (time()-$frontpage[0] <= 24*60*60) {
+    //return $frontpage[1];
+  }
+  $header = array(
+      'Typ',
+      'Titel',
+      'Letzte Änderung',
+      'Letzter Bearbeiter',
+      'Zugriff',
+      'Versionsinformation',
+
+  );
+  $nodes = frontpage_getData(30);
+  $output = theme ('table', $header, $nodes, array('id'=>'frontpage_table'));
+  variable_set('frontpage_table',array(time(),$output));
+  if (!variable_get('frontpage_titel_hide', true)) {
+    $output = '<h1>'.variable_get('frontpage_titel','Neustes').'</h1>'.$output;
+  }
+  return $output;
+}
+
+/**
+ * Ermittelt das Alter eines Nodes anhand des Timestamps
+ * Gibt folgendes zurück: heute, gestern, n Tage, n Wochen, n Monate
+ * @param integer $timestamp
+ * @return string 
+ */
+function frontpage_ago($timestamp) {
+  $diff = mktime(23,59,59,date('n'),date('j'),date('Y'))-$timestamp;
+  if ($diff <= 60*60*24) {
+    return 'heute';
+  }
+  elseif ($diff <= 60*60*24*2) {
+    return 'gestern';
+  }
+  elseif ($diff <= 60*60*24*7) {
+    return floor($diff/60/60/24).' Tage';
+  }
+  elseif ($diff <= 60*60*24*7*4) {
+    $w = floor($diff/60/60/24/7);
+    return $w.' Woche'.(($w==1)?'':'n');
+  }
+  elseif ($diff <= 60*60*24*30*2000) {
+    $w = floor($diff/60/60/24/30.3);
+    $w = $w<1?1:$w;
+    return $w.' Monat'.(($w==1)?'':'e');
+  }
+}
+
+/**
+ * UID -> Username conversion
+ * @param integer $uid Eine Drupal User-ID
+ * @return string Benutzername
+ */
+function _frontpage_uid2username($uid) {
+  $sql = "SELECT {users}.name FROM ({users}, {node} n) WHERE {users}.uid = '%d'";
+  $result = db_query(db_rewrite_sql($sql), $uid);
+  return db_fetch_object($result)->name;
+}
+
+/**
+ * Fire SQL and get Data
+ * 
+ * @param integer $limit Wie viele Einträge maximal geholt werden sollen
+ * @param integer $start Startwert der Pagination
+ * @return array 
+ */
+function frontpage_getData($limit=10, $start=0) {
+  $nodes = array();
+  $sql = variable_get('frontpage_sql', '');
+  $res = db_query(db_rewrite_sql($sql),$start,$limit);
+  while ($r = db_fetch_array($res)) {
+    $node = new stdClass();
+    $node->nid = $r['nid'];
+    $node->type = variable_get('frontpage_dossiertype', 'dossier');
+    $nodes[$r['nid']]['type']       = frontpage_nodetypeIcon($r['node_type']);
+    $nodes[$r['nid']]['titel']      = l($r['node_title'],'node/'.$r['nid']).frontpage_hasCoordinates($r['nid']);
+    $nodes[$r['nid']]['changed']    = frontpage_ago($r['node_changed']);
+    $nodes[$r['nid']]['change_uid'] = l(_frontpage_uid2username($r['change_uid']), 'user/'.$r['change_uid']);
+    $nodes[$r['nid']]['og']         = frontpage_getGroupIcons(og_get_node_groups($node), frontpage_og_isPublic($r['nid']));
+    $nodes[$r['nid']]['revision']   = $r['log'];
+  }
+  return $nodes;
+}
+
+/**
+ * Findet heraus, ob ein Node public ist
+ * @param type $nid
+ * @return type 
+ */
+function frontpage_og_isPublic($nid) {
+  $sql = "SELECT og_public FROM {og_access_post} WHERE nid = %d";
+  return db_fetch_object(db_query($sql,$nid))->og_public;
+}
+
+/**
+ * Findet heraus, ob ein Node Koordinaten angehängt hat
+ * @param type $nid 
+ */
+function frontpage_hasCoordinates($nid) {
+  $out = '';
+  $sql = "SELECT node.nid FROM node LEFT JOIN location_instance ON (node.vid = location_instance.vid) LEFT JOIN location ON (location_instance.lid = location.lid) WHERE node.nid = ".$nid." AND location.latitude IS NOT NULL";
+  if (db_fetch_object(db_query($sql))) {
+    $out = '<div class="frontpage-map" title="Dieses Dossier ist mit Koordinaten versehen"></div>';
+  }
+  return $out;
+}
+
+
+/**
+ * Gibt HTML-Code für die Gruppen-Anzeige zurück
+ * @param array $groups Array mit Gruppen-Titel zB 'Gruner AG'
+ * @return string Kommagetrennte Liste mit Gruppen-Icon und wenn
+ * nicht vorhanden mit Gruppenname
+ */
+function frontpage_getGroupIcons($groups, $public) {
+  static $imgs = array();
+  $g = array();
+  $showLogos = variable_get('frontpage_showOgLogos', true);
+  foreach ($groups as $group) {
+    $imgpath = path_to_theme().'/custom/icons_og/'.preg_replace('/[^a-z]/msi','',strtolower($group)).'.png';
+    if(file_exists($imgpath) && $showLogos){
+      if (!isset($imgs[$imgpath])) {
+        $imgs[$imgpath] = array('content' => file_get_contents($imgpath),
+                                'info'    => getimagesize($imgpath));
+      }
+      $src = frontpage_dataUriSupport()?'data:image/jpeg;base64,'.chunk_split(base64_encode($imgs[$imgpath]['content'])):($imgpath);
+      $g[] = '<img src="'.$src.'" '.$imgs[$imgpath]['info'][3].' title="'.$group.'" />';
+    }
+    else { $g[] = $group; } // es existiert kein Bild
+  }
+  // Für Globale Inhalte noch Globa-Icon voranhängen.
+  if ($public) {
+    array_unshift($g,frontpage_getImgPublic());
+  }
+  return implode(', ', $g);
+}
+
+
+
+function frontpage_getImgPublic() {
+  static $img = '';
+  if ($img != '') return $img;
+  $img = theme_image(
+          path_to_theme().'/custom/icons_og/global.gif',
+          '',
+          'Diese Datei ist für alle Plattformbenutzer zugänglich',
+          array('width'=>16,'height'=>16),
+          false);
+  return $img;
+}
+
+
+/**
+ * Checks if data URI is supported
+ * @return boolean returns true if data-URI is supported
+ * false if not supported (IE<8)
+ */
+function frontpage_dataUriSupport() {
+  return !preg_match('/(?i)msie [1-7]/',$_SERVER['HTTP_USER_AGENT']);
+}
+
+
+
+function frontpage_nodetypeIcon($type) {
+  // Spezialzeichen löschen; in Kleinbuchstaben umwandeln
+  $o = preg_replace('/[^a-z]/','',strtolower($type));
+
+  // Pfad des Bildes
+  $imgpath = path_to_theme().'/custom/icons_nodetype/'.$o.'.png';
+
+  // Wenn Bild vorhanden, dann nehmen
+  if(file_exists($imgpath)){
+  $icon = theme(
+          'image',
+          $imgpath,
+          strtoupper(substr($type,0,1)).substr($type,1,strlen($type)-1),
+          strtoupper(substr($type,0,1)).substr($type,1,strlen($type)-1),
+          array('width'=>'16'),
+          false);
+  }
+
+  // anderfalls default-Bild
+  else{
+  $icon = theme(
+          'image',
+          path_to_theme().'/custom/icons_nodetype/default.png',
+          strtoupper(substr($type,0,1)).substr($type,1,strlen($type)-1),
+          strtoupper(substr($type,0,1)).substr($type,1,strlen($type)-1),
+          array('width'=>'16'),
+          false);
+  }
+
+  return $icon;
+}

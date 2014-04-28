@@ -43,6 +43,15 @@ function dossiersearch_menu() {
     'type'            => MENU_CALLBACK,
     'file'            => 'export.csv.inc',
   );
+  
+  
+  // Map-Site
+  $items['map'] = array(
+    'page callback'   => '_map',
+    'access arguments'=> array('access content'),
+    'type'            => MENU_CALLBACK,
+    'file'            => 'map.page.inc',
+  );
   return $items;
 }
 

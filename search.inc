@@ -169,7 +169,7 @@ function _dossiersearch_createQueryTitle($title) {
 }
 
 /**
- * Creates SQL Filter for Searchstring
+ * Creates SQL Filter for Filename
  * @param array $title array('searchstring1', 'searchstrin2', ...)
  * @return string <i>AND n.title LIKE '%%%s%%' AND n.title LIKE '%%%s%%'</i> etc.
  */
